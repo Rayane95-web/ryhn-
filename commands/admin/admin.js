@@ -75,9 +75,7 @@ module.exports = {
     if (sub === 'clearwarns') {
       const member = message.mentions.members.first();
       if (!member) return message.reply('❌ حدد عضواً.');
-      const { QuickDB } = require('quick.db');
-      const dbRaw = new QuickDB();
-      await dbRaw.set(`warns_${message.guild.id}_${member.id}`, []);
+      await db.clearWarns(message.guild.id, member.id);
       return message.reply(`✅ تم مسح تحذيرات ${member}.`);
     }
 

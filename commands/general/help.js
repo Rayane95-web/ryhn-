@@ -1,5 +1,5 @@
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
-const config = require('../config.js');
+const config = require('../../config.js');
 
 const categories = {
   '🛡️ الإشراف': [

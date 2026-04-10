@@ -1,0 +1,17 @@
+# Environment variables — NEVER commit your real .env file
+.env
+
+# Dependencies
+node_modules/
+
+# quick.db database file
+*.sqlite
+json.sqlite
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db
