@@ -1,0 +1,25 @@
+{
+  "name": "ryhn-bot",
+  "version": "2.0.0",
+  "description": "بوت مجتمع A7MED — النسخة 2.0",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node --watch index.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "discord.js": "^14.15.3",
+    "dotenv": "^16.4.5",
+    "quick.db": "^9.1.7"
+  },
+  "keywords": [
+    "discord",
+    "bot",
+    "arabic"
+  ],
+  "author": "9ATTOS",
+  "license": "ISC"
+}
