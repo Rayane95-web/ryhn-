@@ -1,8 +1,3 @@
-// ============================================================
-//  index.js — بوت مجتمع A7MED
-//  XP system removed. Tickets visible to support role + owner only.
-// ============================================================
-
 require('dotenv').config();
 
 const {
@@ -21,7 +16,6 @@ const fs     = require('fs');
 const path   = require('path');
 const config = require('./config.js');
 
-// ── Client ───────────────────────────────────────────────────
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -40,7 +34,7 @@ client.cooldowns     = new Collection();
 client.activeQuizzes = new Collection();
 client.inviteCache   = new Map();
 
-// ── Load commands ────────────────────────────────────────────
+// ── Load commands ─────────────────────────────────────────────
 const commandsPath = path.join(__dirname, 'commands');
 for (const dir of fs.readdirSync(commandsPath)) {
   const dirPath = path.join(commandsPath, dir);
@@ -60,56 +54,43 @@ for (const dir of fs.readdirSync(commandsPath)) {
   }
 }
 
-// ── Ready ─────────────────────────────────────────────────────
+// ── Ready ──────────────────────────────────────────────────────
 client.once('clientReady', async () => {
   console.log(`\n🤖 Bot online: ${client.user.tag}`);
   console.log(`📦 Commands loaded: ${client.commands.size}`);
   console.log(`🌐 Servers: ${client.guilds.cache.size}\n`);
-
   client.user.setActivity(`${config.prefix}help | مجتمع A7MED`, { type: 3 });
-
   for (const guild of client.guilds.cache.values()) {
     try {
       const invites = await guild.invites.fetch();
       const map = new Map();
-      for (const inv of invites.values()) {
-        map.set(inv.code, { inviterId: inv.inviter?.id, uses: inv.uses ?? 0 });
-      }
+      for (const inv of invites.values()) map.set(inv.code, { inviterId: inv.inviter?.id, uses: inv.uses ?? 0 });
       client.inviteCache.set(guild.id, map);
     } catch {}
   }
 });
 
-// ── Member join — auto-role + welcome + invite tracking ───────
+// ── Member join ────────────────────────────────────────────────
 client.on('guildMemberAdd', async member => {
   const db = require('./utils/db.js');
   try {
-    // Auto-role
     if (config.autoRoleId) {
       const role = member.guild.roles.cache.get(config.autoRoleId);
       if (role) await member.roles.add(role).catch(() => {});
     }
-
-    // Invite tracking
     let inviterId = null;
     try {
-      const cached    = client.inviteCache.get(member.guild.id) ?? new Map();
+      const cached     = client.inviteCache.get(member.guild.id) ?? new Map();
       const newInvites = await member.guild.invites.fetch();
       for (const [code, inv] of newInvites) {
         const c = cached.get(code);
         if (c && inv.uses > c.uses && inv.inviter) { inviterId = inv.inviter.id; break; }
       }
       const updated = new Map();
-      for (const inv of newInvites.values()) {
-        updated.set(inv.code, { inviterId: inv.inviter?.id, uses: inv.uses ?? 0 });
-      }
+      for (const inv of newInvites.values()) updated.set(inv.code, { inviterId: inv.inviter?.id, uses: inv.uses ?? 0 });
       client.inviteCache.set(member.guild.id, updated);
-      if (inviterId && inviterId !== member.id) {
-        await db.addInvite(member.guild.id, inviterId);
-      }
+      if (inviterId && inviterId !== member.id) await db.addInvite(member.guild.id, inviterId);
     } catch {}
-
-    // Welcome message
     if (config.welcomeChannelId) {
       const channel = member.guild.channels.cache.get(config.welcomeChannelId);
       if (channel) {
@@ -133,42 +114,31 @@ client.on('guildMemberAdd', async member => {
         channel.send({ content: `${member}`, embeds: [embed] });
       }
     }
-  } catch (err) {
-    console.error('guildMemberAdd error:', err);
-  }
+  } catch (err) { console.error('guildMemberAdd error:', err); }
 });
 
-// ── Message points only (XP system removed) ───────────────────
+// ── Message points (XP removed) ───────────────────────────────
 const ptsCooldown = new Map();
 
 client.on('messageCreate', async message => {
   if (message.author.bot || !message.guild) return;
-
   const db  = require('./utils/db.js');
   const now = Date.now();
-
-  // 1 point per message (10s cooldown)
   const lastPts = ptsCooldown.get(message.author.id) ?? 0;
   if (now - lastPts > 10_000) {
     ptsCooldown.set(message.author.id, now);
     db.addMessagePoints(message.guild.id, message.author.id, config.points.perMessage).catch(() => {});
   }
-
-  // Command handling
   if (!message.content.startsWith(config.prefix)) return;
-
   const args        = message.content.slice(config.prefix.length).trim().split(/\s+/);
   const commandName = args.shift().toLowerCase();
   const resolved    = client.aliases.get(commandName) ?? commandName;
   const command     = client.commands.get(resolved);
   if (!command) return;
-
-  // Cooldown
   if (!client.cooldowns.has(command.name)) client.cooldowns.set(command.name, new Collection());
   const timestamps     = client.cooldowns.get(command.name);
   const cooldownAmount = (command.cooldown ?? 3) * 1000;
   const userId         = message.author.id;
-
   if (timestamps.has(userId)) {
     const exp = timestamps.get(userId) + cooldownAmount;
     if (now < exp) {
@@ -178,7 +148,6 @@ client.on('messageCreate', async message => {
   }
   timestamps.set(userId, now);
   setTimeout(() => timestamps.delete(userId), cooldownAmount);
-
   try {
     await command.execute(message, args, client);
   } catch (err) {
@@ -187,55 +156,35 @@ client.on('messageCreate', async message => {
   }
 });
 
-// ── Button interactions ───────────────────────────────────────
+// ── Button interactions ────────────────────────────────────────
 client.on('interactionCreate', async interaction => {
   if (!interaction.isButton()) return;
-
   const db = require('./utils/db.js');
   const { customId, guild, member, user, channel } = interaction;
 
-  // ── Ticket: Create ────────────────────────────────────────
+  // ── Ticket: Create ─────────────────────────────────────────
   if (customId === 'ticket_create') {
     await interaction.deferReply({ ephemeral: true });
-
     const existing = guild.channels.cache.find(ch => ch.topic === `ticket:${user.id}`);
     if (existing) return interaction.editReply(`❌ لديك تذكرة مفتوحة بالفعل: ${existing}`);
-
     try {
-      // Only: @everyone denied, ticket owner allowed, bot allowed, support role allowed
       const overwrites = [
         { id: guild.id, deny: [PermissionFlagsBits.ViewChannel] },
         {
           id: user.id,
-          allow: [
-            PermissionFlagsBits.ViewChannel,
-            PermissionFlagsBits.SendMessages,
-            PermissionFlagsBits.ReadMessageHistory,
-          ],
+          allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory],
         },
         {
           id: guild.members.me.id,
-          allow: [
-            PermissionFlagsBits.ViewChannel,
-            PermissionFlagsBits.SendMessages,
-            PermissionFlagsBits.ManageChannels,
-            PermissionFlagsBits.ReadMessageHistory,
-          ],
+          allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ManageChannels, PermissionFlagsBits.ReadMessageHistory],
         },
       ];
-
-      // Add support role if configured
       if (config.supportRoleId) {
         overwrites.push({
           id: config.supportRoleId,
-          allow: [
-            PermissionFlagsBits.ViewChannel,
-            PermissionFlagsBits.SendMessages,
-            PermissionFlagsBits.ReadMessageHistory,
-          ],
+          allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory],
         });
       }
-
       const ticketChannel = await guild.channels.create({
         name: `🎫-${user.username.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 20)}`,
         type: ChannelType.GuildText,
@@ -244,7 +193,6 @@ client.on('interactionCreate', async interaction => {
         permissionOverwrites: overwrites,
         reason: `Ticket opened by ${user.tag}`,
       });
-
       await db.setTicket(guild.id, ticketChannel.id, user.id);
 
       const ticketEmbed = new EmbedBuilder()
@@ -267,7 +215,13 @@ client.on('interactionCreate', async interaction => {
         new ButtonBuilder().setCustomId('ticket_close').setLabel('🔒 إغلاق التذكرة').setStyle(ButtonStyle.Danger),
       );
 
-      await ticketChannel.send({ content: `${user}`, embeds: [ticketEmbed], components: [ticketRow] });
+      // ✅ Ping support role + ticket owner when ticket opens
+      const supportPing = config.supportRoleId ? `<@&${config.supportRoleId}>` : '';
+      await ticketChannel.send({
+        content: `${user} ${supportPing}`.trim(),
+        embeds: [ticketEmbed],
+        components: [ticketRow],
+      });
 
       if (config.ticketLogChannelId) {
         const logChannel = guild.channels.cache.get(config.ticketLogChannelId);
@@ -281,7 +235,6 @@ client.on('interactionCreate', async interaction => {
           }).catch(() => {});
         }
       }
-
       await interaction.editReply(`✅ تم إنشاء تذكرتك: ${ticketChannel}`);
     } catch (err) {
       console.error('Ticket create error:', err);
@@ -290,7 +243,7 @@ client.on('interactionCreate', async interaction => {
     return;
   }
 
-  // ── Ticket: Claim ─────────────────────────────────────────
+  // ── Ticket: Claim ──────────────────────────────────────────
   if (customId === 'ticket_claim') {
     const hasSupportRole = config.supportRoleId && member.roles.cache.has(config.supportRoleId);
     const isAdmin = member.permissions.has(PermissionFlagsBits.Administrator);
@@ -300,9 +253,36 @@ client.on('interactionCreate', async interaction => {
     const ticketData = await db.getTicket(guild.id, channel.id);
     if (!ticketData) return interaction.reply({ content: '❌ هذه القناة ليست تذكرة.', ephemeral: true });
 
+    // ✅ Already claimed by someone else
+    if (ticketData.claimedBy) {
+      if (ticketData.claimedBy === user.id)
+        return interaction.reply({ content: '❌ لقد استلمت هذه التذكرة بالفعل!', ephemeral: true });
+      return interaction.reply({
+        content: `❌ هذه التذكرة تم استلامها بالفعل بواسطة <@${ticketData.claimedBy}>`,
+        ephemeral: true,
+      });
+    }
+
+    // ✅ Mark as claimed
+    await db.claimTicket(guild.id, channel.id, user.id);
     await db.addTicketClaim(guild.id, user.id);
 
-    await interaction.reply({
+    // ✅ Disable claim button after first claim
+    const updatedRow = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId('ticket_claim')
+        .setLabel(`✅ مُستلمة بواسطة ${user.username}`)
+        .setStyle(ButtonStyle.Success)
+        .setDisabled(true),
+      new ButtonBuilder()
+        .setCustomId('ticket_close')
+        .setLabel('🔒 إغلاق التذكرة')
+        .setStyle(ButtonStyle.Danger),
+    );
+
+    await interaction.update({ components: [updatedRow] });
+
+    await channel.send({
       embeds: [new EmbedBuilder().setColor(config.colors.success).setTitle('✅ تم استلام التذكرة')
         .setDescription(`${user} استلم هذه التذكرة وسيتولى المساعدة.`)
         .addFields({ name: '🏆 النقاط', value: `+${config.points.perTicketClaim} نقاط`, inline: true })
@@ -311,7 +291,7 @@ client.on('interactionCreate', async interaction => {
     return;
   }
 
-  // ── Ticket: Close ─────────────────────────────────────────
+  // ── Ticket: Close ──────────────────────────────────────────
   if (customId === 'ticket_close') {
     const ticketData = await db.getTicket(guild.id, channel.id);
     if (!ticketData) return interaction.reply({ content: '❌ هذه القناة ليست تذكرة.', ephemeral: true });
@@ -339,6 +319,7 @@ client.on('interactionCreate', async interaction => {
               { name: 'القناة', value: channel.name, inline: true },
               { name: 'فُتحت بواسطة', value: opener ? opener.tag : ticketData.userId, inline: true },
               { name: 'أُغلقت بواسطة', value: user.tag, inline: true },
+              { name: 'مُستلمة بواسطة', value: ticketData.claimedBy ? `<@${ticketData.claimedBy}>` : 'لم تُستلم', inline: true },
               { name: 'مدة التذكرة', value: `<t:${Math.floor(ticketData.openedAt / 1000)}:R>`, inline: true },
             ).setTimestamp()]
         }).catch(() => {});
@@ -351,7 +332,7 @@ client.on('interactionCreate', async interaction => {
   }
 });
 
-// ── Invite cache updates ──────────────────────────────────────
+// ── Invite cache ───────────────────────────────────────────────
 client.on('inviteCreate', invite => {
   try {
     const map = client.inviteCache.get(invite.guild.id) ?? new Map();
@@ -367,11 +348,9 @@ client.on('inviteDelete', invite => {
   } catch {}
 });
 
-// ── Error handling ────────────────────────────────────────────
 client.on('error', err => console.error('Discord client error:', err));
 process.on('unhandledRejection', err => console.error('Unhandled rejection:', err));
 
-// ── Login ─────────────────────────────────────────────────────
 client.login(config.token).catch(err => {
   console.error('❌ Login failed:', err.message);
   process.exit(1);
