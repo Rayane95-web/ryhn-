@@ -2,84 +2,185 @@ const { EmbedBuilder, PermissionFlagsBits } = require('discord.js');
 const config = require('../../config.js');
 const db = require('../../utils/db.js');
 
-function isAdmin(message) {
-  // Auto-detect: Discord Administrator permission OR dev override
-  return message.member.permissions.has(PermissionFlagsBits.Administrator) ||
-    message.author.id === config.devId;
-}
+const isAdmin = (message) =>
+  message.member.permissions.has(PermissionFlagsBits.Administrator) ||
+  message.author.id === config.devId;
+
+const isDev = (message) => message.author.id === config.devId;
 
 module.exports = {
   name: 'admin', aliases: ['ادمن', 'لوحة-التحكم'],
   description: 'لوحة تحكم الأدمن',
   usage: '!admin [أمر]',
   category: '⚙️ الإدارة',
+
   async execute(message, args, client) {
     if (!isAdmin(message)) return message.reply('❌ هذا الأمر للأدمن فقط.');
 
     const sub = args[0]?.toLowerCase();
 
-    // عرض لوحة التحكم
-    if (!sub || sub === 'مساعدة' || sub === 'help') {
-      const embed = new EmbedBuilder().setColor(config.colors.danger)
+    // ── Help panel ─────────────────────────────────────────
+    if (!sub || sub === 'help' || sub === 'مساعدة') {
+      const adminFields = [
+        { name: '📢 الإعلانات', value: '`!admin announce #قناة [رسالة]`\n`!admin dm @عضو [رسالة]`' },
+        { name: '⚠️ التحذيرات', value: '`!admin clearwarns @عضو`\n`!admin warns @عضو`' },
+        { name: '🎭 الرتب', value: '`!admin addrole @عضو @رتبة`\n`!admin removerole @عضو @رتبة`' },
+        { name: '🔧 معلومات', value: '`!admin botinfo`\n`!admin serverinfo`' },
+      ];
+
+      // Only show economy section to dev
+      if (isDev(message)) {
+        adminFields.unshift({
+          name: '💰 الاقتصاد — للمطور فقط 👑',
+          value:
+            '`!admin addmoney @عضو [مبلغ]`\n' +
+            '`!admin removemoney @عضو [مبلغ]`\n' +
+            '`!admin setmoney @عضو [مبلغ]`\n' +
+            '`!admin resetmoney @عضو`\n' +
+            '`!admin addpoints @عضو [مبلغ]`\n' +
+            '`!admin removepoints @عضو [مبلغ]`\n' +
+            '`!admin resetall @عضو`',
+        });
+      }
+
+      const embed = new EmbedBuilder()
+        .setColor(config.colors.danger)
         .setTitle('⚙️ لوحة تحكم الأدمن — مجتمع A7MED')
-        .setDescription('أوامر الإدارة المتاحة:')
+        .addFields(...adminFields)
         .addFields(
-          { name: '💰 الاقتصاد', value: '`!admin addmoney @عضو [مبلغ]`\n`!admin removemoney @عضو [مبلغ]`\n`!admin setmoney @عضو [مبلغ]`\n`!admin resetmoney @عضو`' },
-          { name: '⚠️ التحذيرات', value: '`!admin clearwarns @عضو`\n`!admin warns @عضو`' },
-          { name: '🔧 الإعدادات', value: '`!admin prefix [بادئة]`\n`!admin botinfo`\n`!admin serverinfo`' },
-          { name: '📢 الإعلانات', value: '`!admin announce [#قناة] [رسالة]`\n`!admin dm @عضو [رسالة]`' },
-          { name: '🎭 الرتب', value: '`!admin addrole @عضو @رتبة`\n`!admin removerole @عضو @رتبة`' },
+          { name: '👑 المالك', value: 'A7MED', inline: true },
+          { name: '🛠️ المطور', value: '9ATTOS', inline: true },
         )
-        .addFields({ name: '👑 المالك', value: 'A7MED', inline: true }, { name: '🛠️ المطور', value: '9ATTOS', inline: true })
-        .setFooter({ text: 'لوحة تحكم مجتمع A7MED' }).setTimestamp();
+        .setFooter({ text: 'لوحة تحكم مجتمع A7MED' })
+        .setTimestamp();
       return message.channel.send({ embeds: [embed] });
     }
 
-    // إضافة عملات
+    // ══════════════════════════════════════════════════════
+    //  DEV ONLY commands below — anyone else gets blocked
+    // ══════════════════════════════════════════════════════
+    const devOnlyCommands = [
+      'addmoney', 'removemoney', 'setmoney', 'resetmoney',
+      'addpoints', 'removepoints', 'resetall',
+    ];
+
+    if (devOnlyCommands.includes(sub) && !isDev(message)) {
+      return message.reply('❌ هذا الأمر **للمطور فقط** 👑 ولا يمكن لأحد آخر استخدامه حتى لو كان أدمن.');
+    }
+
+    // ── addmoney (DEV only) ─────────────────────────────────
     if (sub === 'addmoney') {
       const member = message.mentions.members.first();
       const amount = parseInt(args[2]);
-      if (!member || isNaN(amount)) return message.reply('❌ `!admin addmoney @عضو [مبلغ]`');
+      if (!member || isNaN(amount) || amount <= 0)
+        return message.reply('❌ `!admin addmoney @عضو [مبلغ]`');
       await db.addBalance(message.guild.id, member.id, amount);
       const bal = await db.getBalance(message.guild.id, member.id);
-      return message.reply(`✅ تم إضافة **${amount.toLocaleString()} عملة** لـ ${member}. رصيده الآن: **${bal.toLocaleString()}**`);
+      return message.reply(
+        `✅ تم إضافة **${amount.toLocaleString()} عملة** لـ ${member}.\n💰 رصيده الآن: **${bal.toLocaleString()}**`
+      );
     }
 
-    // خصم عملات
+    // ── removemoney (DEV only) ──────────────────────────────
     if (sub === 'removemoney') {
       const member = message.mentions.members.first();
       const amount = parseInt(args[2]);
-      if (!member || isNaN(amount)) return message.reply('❌ `!admin removemoney @عضو [مبلغ]`');
+      if (!member || isNaN(amount) || amount <= 0)
+        return message.reply('❌ `!admin removemoney @عضو [مبلغ]`');
       await db.removeBalance(message.guild.id, member.id, amount);
-      return message.reply(`✅ تم خصم **${amount.toLocaleString()} عملة** من ${member}.`);
+      const bal = await db.getBalance(message.guild.id, member.id);
+      return message.reply(
+        `✅ تم خصم **${amount.toLocaleString()} عملة** من ${member}.\n💰 رصيده الآن: **${bal.toLocaleString()}**`
+      );
     }
 
-    // تعيين رصيد
+    // ── setmoney (DEV only) ─────────────────────────────────
     if (sub === 'setmoney') {
       const member = message.mentions.members.first();
       const amount = parseInt(args[2]);
-      if (!member || isNaN(amount)) return message.reply('❌ `!admin setmoney @عضو [مبلغ]`');
+      if (!member || isNaN(amount) || amount < 0)
+        return message.reply('❌ `!admin setmoney @عضو [مبلغ]`');
       await db.setBalance(message.guild.id, member.id, amount);
       return message.reply(`✅ تم تعيين رصيد ${member} إلى **${amount.toLocaleString()} عملة**.`);
     }
 
-    // إعادة تعيين الرصيد
+    // ── resetmoney (DEV only) ───────────────────────────────
     if (sub === 'resetmoney') {
       const member = message.mentions.members.first();
-      if (!member) return message.reply('❌ حدد عضواً.');
+      if (!member) return message.reply('❌ `!admin resetmoney @عضو`');
       await db.setBalance(message.guild.id, member.id, config.economy.startingBalance);
-      return message.reply(`✅ تم إعادة تعيين رصيد ${member} إلى **${config.economy.startingBalance} عملة**.`);
+      return message.reply(
+        `✅ تم إعادة تعيين رصيد ${member} إلى **${config.economy.startingBalance.toLocaleString()} عملة**.`
+      );
     }
 
-    // مسح تحذيرات
+    // ── addpoints (DEV only) ────────────────────────────────
+    if (sub === 'addpoints') {
+      const member = message.mentions.members.first();
+      const amount = parseInt(args[2]);
+      if (!member || isNaN(amount) || amount <= 0)
+        return message.reply('❌ `!admin addpoints @عضو [مبلغ]`');
+      await db.addMessagePoints(message.guild.id, member.id, amount);
+      const total = await db.getTotalPoints(message.guild.id, member.id);
+      return message.reply(
+        `✅ تم إضافة **${amount.toLocaleString()} نقطة** لـ ${member}.\n🏆 إجمالي نقاطه: **${total.toLocaleString()}**`
+      );
+    }
+
+    // ── removepoints (DEV only) ─────────────────────────────
+    if (sub === 'removepoints') {
+      const member = message.mentions.members.first();
+      const amount = parseInt(args[2]);
+      if (!member || isNaN(amount) || amount <= 0)
+        return message.reply('❌ `!admin removepoints @عضو [مبلغ]`');
+      const current = await db.getMessagePoints(message.guild.id, member.id);
+      await db.addMessagePoints(message.guild.id, member.id, -Math.min(amount, current));
+      const total = await db.getTotalPoints(message.guild.id, member.id);
+      return message.reply(
+        `✅ تم خصم **${amount.toLocaleString()} نقطة** من ${member}.\n🏆 إجمالي نقاطه: **${total.toLocaleString()}**`
+      );
+    }
+
+    // ── resetall (DEV only) — resets balance + points ───────
+    if (sub === 'resetall') {
+      const member = message.mentions.members.first();
+      if (!member) return message.reply('❌ `!admin resetall @عضو`');
+      await Promise.all([
+        db.setBalance(message.guild.id, member.id, config.economy.startingBalance),
+        db.addMessagePoints(message.guild.id, member.id, -(await db.getMessagePoints(message.guild.id, member.id))),
+      ]);
+      return message.reply(`✅ تم إعادة تعيين رصيد ونقاط ${member} بالكامل.`);
+    }
+
+    // ══════════════════════════════════════════════════════
+    //  ADMIN commands below — any admin can use
+    // ══════════════════════════════════════════════════════
+
+    // ── clearwarns ──────────────────────────────────────────
     if (sub === 'clearwarns') {
       const member = message.mentions.members.first();
-      if (!member) return message.reply('❌ حدد عضواً.');
+      if (!member) return message.reply('❌ `!admin clearwarns @عضو`');
       await db.clearWarns(message.guild.id, member.id);
-      return message.reply(`✅ تم مسح تحذيرات ${member}.`);
+      return message.reply(`✅ تم مسح جميع تحذيرات ${member}.`);
     }
 
-    // إعلان
+    // ── warns ───────────────────────────────────────────────
+    if (sub === 'warns') {
+      const member = message.mentions.members.first();
+      if (!member) return message.reply('❌ `!admin warns @عضو`');
+      const warns = await db.getWarns(message.guild.id, member.id);
+      const embed = new EmbedBuilder().setColor(config.colors.warning)
+        .setTitle(`⚠️ تحذيرات ${member.user.username}`)
+        .setDescription(
+          warns.length === 0
+            ? '✅ لا توجد تحذيرات.'
+            : warns.map((w, i) => `**${i + 1}.** ${w.reason} — بواسطة ${w.by} (${w.date})`).join('\n')
+        )
+        .setFooter({ text: `إجمالي التحذيرات: ${warns.length}` }).setTimestamp();
+      return message.channel.send({ embeds: [embed] });
+    }
+
+    // ── announce ────────────────────────────────────────────
     if (sub === 'announce') {
       const channel = message.mentions.channels.first();
       const msg = args.slice(2).join(' ');
@@ -89,11 +190,11 @@ module.exports = {
         .setDescription(msg)
         .addFields({ name: 'بواسطة', value: message.author.tag })
         .setTimestamp();
-      channel.send({ embeds: [embed] });
+      await channel.send({ embeds: [embed] });
       return message.reply(`✅ تم إرسال الإعلان إلى ${channel}.`);
     }
 
-    // إرسال DM
+    // ── dm ──────────────────────────────────────────────────
     if (sub === 'dm') {
       const member = message.mentions.members.first();
       const msg = args.slice(2).join(' ');
@@ -101,10 +202,12 @@ module.exports = {
       try {
         await member.send(`📩 **رسالة من إدارة مجتمع A7MED:**\n${msg}`);
         return message.reply(`✅ تم إرسال رسالة خاصة لـ ${member}.`);
-      } catch { return message.reply('❌ لا أستطيع إرسال رسالة لهذا العضو (ربما أغلق الرسائل الخاصة).'); }
+      } catch {
+        return message.reply('❌ لا أستطيع إرسال رسالة لهذا العضو (ربما أغلق الرسائل الخاصة).');
+      }
     }
 
-    // معلومات البوت
+    // ── botinfo ─────────────────────────────────────────────
     if (sub === 'botinfo') {
       const uptime = process.uptime();
       const h = Math.floor(uptime / 3600);
