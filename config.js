@@ -20,15 +20,17 @@ module.exports = {
   guildId:  process.env.GUILD_ID          || '',
 
   // ── Users ─────────────────────────────────────────────────
-  ownerId: process.env.OWNER_ID || '',
-  devId:   process.env.DEV_ID   || '',
+  // devId is used for developer-only checks (OWNER_ID removed — use DEV_ID)
+  devId: process.env.DEV_ID || '',
 
   // ── Roles ─────────────────────────────────────────────────
-  adminRoleId: process.env.ADMIN_ROLE_ID || '',
-  autoRoleId:  process.env.AUTO_ROLE_ID  || '',
+  // adminRoleId is optional — bot auto-detects admins via Discord permissions
+  autoRoleId: process.env.AUTO_ROLE_ID || '',
 
   // ── Channels ──────────────────────────────────────────────
-  welcomeChannelId: process.env.WELCOME_CHANNEL_ID || '',
+  welcomeChannelId:     process.env.WELCOME_CHANNEL_ID      || '',
+  ticketCategoryId:     process.env.TICKET_CATEGORY_ID      || '',
+  ticketLogChannelId:   process.env.TICKET_LOG_CHANNEL_ID   || '',
 
   // ── Bot behaviour ─────────────────────────────────────────
   prefix: process.env.PREFIX || '!',
@@ -45,6 +47,13 @@ module.exports = {
   xp: {
     perMessageMin: parseInt(process.env.XP_PER_MESSAGE_MIN, 10) || 5,
     perMessageMax: parseInt(process.env.XP_PER_MESSAGE_MAX, 10) || 15,
+  },
+
+  // ── Points System ─────────────────────────────────────────
+  points: {
+    perMessage:    1,   // 1 point per message
+    perInvite:     25,  // 25 points per successful invite
+    perTicketClaim: 5,  // 5 points per ticket claim
   },
 
   // ── Embed colours ─────────────────────────────────────────

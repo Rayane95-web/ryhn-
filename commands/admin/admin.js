@@ -3,9 +3,9 @@ const config = require('../../config.js');
 const db = require('../../utils/db.js');
 
 function isAdmin(message) {
+  // Auto-detect: Discord Administrator permission OR dev override
   return message.member.permissions.has(PermissionFlagsBits.Administrator) ||
-    message.author.id === config.ownerId || message.author.id === config.devId ||
-    message.member.roles.cache.has(config.adminRoleId);
+    message.author.id === config.devId;
 }
 
 module.exports = {
