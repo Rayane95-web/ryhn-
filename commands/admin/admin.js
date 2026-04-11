@@ -22,13 +22,18 @@ module.exports = {
     // ── Help panel ─────────────────────────────────────────
     if (!sub || sub === 'help' || sub === 'مساعدة') {
       const adminFields = [
-        { name: '📢 الإعلانات', value: '`!admin announce #قناة [رسالة]`\n`!admin dm @عضو [رسالة]`' },
+        {
+          name: '📢 الإعلانات',
+          value:
+            '`!admin announce #قناة [رسالة]`\n' +
+            '`!admin dm @عضو [رسالة]` — رسالة لعضو واحد\n' +
+            '`!admin dm role @رتبة [رسالة]` — رسالة لكل أعضاء رتبة',
+        },
         { name: '⚠️ التحذيرات', value: '`!admin clearwarns @عضو`\n`!admin warns @عضو`' },
         { name: '🎭 الرتب', value: '`!admin addrole @عضو @رتبة`\n`!admin removerole @عضو @رتبة`' },
-        { name: '🔧 معلومات', value: '`!admin botinfo`\n`!admin serverinfo`' },
+        { name: '🔧 معلومات', value: '`!admin botinfo`' },
       ];
 
-      // Only show economy section to dev
       if (isDev(message)) {
         adminFields.unshift({
           name: '💰 الاقتصاد — للمطور فقط 👑',
@@ -56,92 +61,74 @@ module.exports = {
       return message.channel.send({ embeds: [embed] });
     }
 
-    // ══════════════════════════════════════════════════════
-    //  DEV ONLY commands below — anyone else gets blocked
-    // ══════════════════════════════════════════════════════
+    // ── DEV ONLY block ─────────────────────────────────────
     const devOnlyCommands = [
       'addmoney', 'removemoney', 'setmoney', 'resetmoney',
       'addpoints', 'removepoints', 'resetall',
     ];
-
     if (devOnlyCommands.includes(sub) && !isDev(message)) {
       return message.reply('❌ هذا الأمر **للمطور فقط** 👑 ولا يمكن لأحد آخر استخدامه حتى لو كان أدمن.');
     }
 
-    // ── addmoney (DEV only) ─────────────────────────────────
+    // ── addmoney (DEV) ──────────────────────────────────────
     if (sub === 'addmoney') {
       const member = message.mentions.members.first();
       const amount = parseInt(args[2]);
-      if (!member || isNaN(amount) || amount <= 0)
-        return message.reply('❌ `!admin addmoney @عضو [مبلغ]`');
+      if (!member || isNaN(amount) || amount <= 0) return message.reply('❌ `!admin addmoney @عضو [مبلغ]`');
       await db.addBalance(message.guild.id, member.id, amount);
       const bal = await db.getBalance(message.guild.id, member.id);
-      return message.reply(
-        `✅ تم إضافة **${amount.toLocaleString()} عملة** لـ ${member}.\n💰 رصيده الآن: **${bal.toLocaleString()}**`
-      );
+      return message.reply(`✅ تم إضافة **${amount.toLocaleString()} عملة** لـ ${member}.\n💰 رصيده الآن: **${bal.toLocaleString()}**`);
     }
 
-    // ── removemoney (DEV only) ──────────────────────────────
+    // ── removemoney (DEV) ───────────────────────────────────
     if (sub === 'removemoney') {
       const member = message.mentions.members.first();
       const amount = parseInt(args[2]);
-      if (!member || isNaN(amount) || amount <= 0)
-        return message.reply('❌ `!admin removemoney @عضو [مبلغ]`');
+      if (!member || isNaN(amount) || amount <= 0) return message.reply('❌ `!admin removemoney @عضو [مبلغ]`');
       await db.removeBalance(message.guild.id, member.id, amount);
       const bal = await db.getBalance(message.guild.id, member.id);
-      return message.reply(
-        `✅ تم خصم **${amount.toLocaleString()} عملة** من ${member}.\n💰 رصيده الآن: **${bal.toLocaleString()}**`
-      );
+      return message.reply(`✅ تم خصم **${amount.toLocaleString()} عملة** من ${member}.\n💰 رصيده الآن: **${bal.toLocaleString()}**`);
     }
 
-    // ── setmoney (DEV only) ─────────────────────────────────
+    // ── setmoney (DEV) ──────────────────────────────────────
     if (sub === 'setmoney') {
       const member = message.mentions.members.first();
       const amount = parseInt(args[2]);
-      if (!member || isNaN(amount) || amount < 0)
-        return message.reply('❌ `!admin setmoney @عضو [مبلغ]`');
+      if (!member || isNaN(amount) || amount < 0) return message.reply('❌ `!admin setmoney @عضو [مبلغ]`');
       await db.setBalance(message.guild.id, member.id, amount);
       return message.reply(`✅ تم تعيين رصيد ${member} إلى **${amount.toLocaleString()} عملة**.`);
     }
 
-    // ── resetmoney (DEV only) ───────────────────────────────
+    // ── resetmoney (DEV) ────────────────────────────────────
     if (sub === 'resetmoney') {
       const member = message.mentions.members.first();
       if (!member) return message.reply('❌ `!admin resetmoney @عضو`');
       await db.setBalance(message.guild.id, member.id, config.economy.startingBalance);
-      return message.reply(
-        `✅ تم إعادة تعيين رصيد ${member} إلى **${config.economy.startingBalance.toLocaleString()} عملة**.`
-      );
+      return message.reply(`✅ تم إعادة تعيين رصيد ${member} إلى **${config.economy.startingBalance.toLocaleString()} عملة**.`);
     }
 
-    // ── addpoints (DEV only) ────────────────────────────────
+    // ── addpoints (DEV) ─────────────────────────────────────
     if (sub === 'addpoints') {
       const member = message.mentions.members.first();
       const amount = parseInt(args[2]);
-      if (!member || isNaN(amount) || amount <= 0)
-        return message.reply('❌ `!admin addpoints @عضو [مبلغ]`');
+      if (!member || isNaN(amount) || amount <= 0) return message.reply('❌ `!admin addpoints @عضو [مبلغ]`');
       await db.addMessagePoints(message.guild.id, member.id, amount);
       const total = await db.getTotalPoints(message.guild.id, member.id);
-      return message.reply(
-        `✅ تم إضافة **${amount.toLocaleString()} نقطة** لـ ${member}.\n🏆 إجمالي نقاطه: **${total.toLocaleString()}**`
-      );
+      return message.reply(`✅ تم إضافة **${amount.toLocaleString()} نقطة** لـ ${member}.\n🏆 إجمالي نقاطه: **${total.toLocaleString()}**`);
     }
 
-    // ── removepoints (DEV only) ─────────────────────────────
+    // ── removepoints (DEV) ──────────────────────────────────
     if (sub === 'removepoints') {
       const member = message.mentions.members.first();
       const amount = parseInt(args[2]);
-      if (!member || isNaN(amount) || amount <= 0)
-        return message.reply('❌ `!admin removepoints @عضو [مبلغ]`');
+      if (!member || isNaN(amount) || amount <= 0) return message.reply('❌ `!admin removepoints @عضو [مبلغ]`');
       const current = await db.getMessagePoints(message.guild.id, member.id);
       await db.addMessagePoints(message.guild.id, member.id, -Math.min(amount, current));
       const total = await db.getTotalPoints(message.guild.id, member.id);
-      return message.reply(
-        `✅ تم خصم **${amount.toLocaleString()} نقطة** من ${member}.\n🏆 إجمالي نقاطه: **${total.toLocaleString()}**`
-      );
+      return message.reply(`✅ تم خصم **${amount.toLocaleString()} نقطة** من ${member}.\n🏆 إجمالي نقاطه: **${total.toLocaleString()}**`);
     }
 
-    // ── resetall (DEV only) — resets balance + points ───────
+    // ── resetall (DEV) ──────────────────────────────────────
     if (sub === 'resetall') {
       const member = message.mentions.members.first();
       if (!member) return message.reply('❌ `!admin resetall @عضو`');
@@ -151,10 +138,6 @@ module.exports = {
       ]);
       return message.reply(`✅ تم إعادة تعيين رصيد ونقاط ${member} بالكامل.`);
     }
-
-    // ══════════════════════════════════════════════════════
-    //  ADMIN commands below — any admin can use
-    // ══════════════════════════════════════════════════════
 
     // ── clearwarns ──────────────────────────────────────────
     if (sub === 'clearwarns') {
@@ -196,11 +179,65 @@ module.exports = {
 
     // ── dm ──────────────────────────────────────────────────
     if (sub === 'dm') {
+      const second = args[1]?.toLowerCase();
+
+      // !admin dm role @رتبة [رسالة] — DM all members with a role
+      if (second === 'role' || second === 'رتبة') {
+        const role = message.mentions.roles.first();
+        const msg  = args.slice(3).join(' ');
+        if (!role || !msg)
+          return message.reply('❌ `!admin dm role @رتبة [رسالة]`');
+
+        // Fetch all members to make sure cache is full
+        await message.guild.members.fetch();
+        const members = role.members.filter(m => !m.user.bot);
+
+        if (members.size === 0)
+          return message.reply(`❌ لا يوجد أعضاء يملكون رتبة ${role}.`);
+
+        const progressMsg = await message.reply(
+          `📤 جاري إرسال الرسائل لـ **${members.size}** عضو يملكون رتبة **${role.name}**...`
+        );
+
+        let sent = 0;
+        let failed = 0;
+
+        for (const [, m] of members) {
+          try {
+            await m.send(
+              `📩 **رسالة من إدارة مجتمع ${message.guild.name}:**\n\n${msg}`
+            );
+            sent++;
+          } catch {
+            failed++;
+          }
+          // Small delay to avoid rate limiting
+          await new Promise(r => setTimeout(r, 500));
+        }
+
+        const resultEmbed = new EmbedBuilder()
+          .setColor(sent > 0 ? config.colors.success : config.colors.danger)
+          .setTitle('📩 نتيجة الإرسال الجماعي')
+          .addFields(
+            { name: '🎭 الرتبة', value: `${role}`, inline: true },
+            { name: '✅ تم الإرسال', value: `${sent} عضو`, inline: true },
+            { name: '❌ فشل الإرسال', value: `${failed} عضو`, inline: true },
+            { name: '📝 الرسالة', value: msg.length > 200 ? msg.slice(0, 200) + '...' : msg },
+          )
+          .setFooter({ text: `بواسطة: ${message.author.tag}` })
+          .setTimestamp();
+
+        return progressMsg.edit({ content: '', embeds: [resultEmbed] });
+      }
+
+      // !admin dm @عضو [رسالة] — DM single member
       const member = message.mentions.members.first();
-      const msg = args.slice(2).join(' ');
-      if (!member || !msg) return message.reply('❌ `!admin dm @عضو [رسالة]`');
+      const msg    = args.slice(2).join(' ');
+      if (!member || !msg)
+        return message.reply('❌ `!admin dm @عضو [رسالة]`\nأو لإرسال لكل أعضاء رتبة: `!admin dm role @رتبة [رسالة]`');
+
       try {
-        await member.send(`📩 **رسالة من إدارة مجتمع A7MED:**\n${msg}`);
+        await member.send(`📩 **رسالة من إدارة مجتمع ${message.guild.name}:**\n\n${msg}`);
         return message.reply(`✅ تم إرسال رسالة خاصة لـ ${member}.`);
       } catch {
         return message.reply('❌ لا أستطيع إرسال رسالة لهذا العضو (ربما أغلق الرسائل الخاصة).');
