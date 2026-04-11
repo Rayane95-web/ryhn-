@@ -16,7 +16,11 @@
     "quick.db": "^9.1.7",
     "better-sqlite3": "^9.4.3"
   },
-  "keywords": ["discord", "bot", "arabic"],
+  "keywords": [
+    "discord",
+    "bot",
+    "arabic"
+  ],
   "author": "9ATTOS",
   "license": "ISC"
 }
