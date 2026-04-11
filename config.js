@@ -13,7 +13,7 @@ module.exports = {
 
   // Roles
   autoRoleId:    process.env.AUTO_ROLE_ID     || '',
-  supportRoleId: process.env.SUPPORT_ROLE_ID  || '', // ← رتبة الدعم (ترى التذاكر)
+  supportRoleId: process.env.SUPPORT_ROLE_ID  || '',
 
   // Channels
   welcomeChannelId:   process.env.WELCOME_CHANNEL_ID    || '',
@@ -41,4 +41,5 @@ module.exports = {
     warning: 0xFEE75C,
     info:    0x5865F2,
     gold:    0xF1C40F,
-  },
+  }
+};
