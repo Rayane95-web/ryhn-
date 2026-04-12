@@ -196,13 +196,15 @@ client.on('messageCreate', async message => {
     const ticketData = await db.getTicket(message.guild.id, message.channel.id).catch(() => null);
 
     if (ticketData) {
-      const isTicketOwner   = message.author.id === ticketData.userId;
-      const isAdmin         = message.member.permissions.has(PermissionFlagsBits.Administrator);
-      const hasSupportRole  = config.supportRoleId && message.member.roles.cache.has(config.supportRoleId);
-      const isDev           = message.author.id === config.devId;
+      const isTicketOwner  = message.author.id === ticketData.userId;
+      const isAdmin        = message.member.permissions.has(PermissionFlagsBits.Administrator);
+      const hasSupportRole = config.supportRoleId && message.member.roles.cache.has(config.supportRoleId);
+      const isDev          = message.author.id === config.devId;
+      // ✅ Whitelisted via !ticket add — no penalty
+      const isAddedUser    = (ticketData.addedUsers ?? []).includes(message.author.id);
 
-      // Someone who shouldn't be here is typing
-      if (!isTicketOwner && !isAdmin && !hasSupportRole && !isDev) {
+      // Someone who shouldnt be here is typing
+      if (!isTicketOwner && !isAdmin && !hasSupportRole && !isDev && !isAddedUser) {
         // Delete their message
         await message.delete().catch(() => {});
 
