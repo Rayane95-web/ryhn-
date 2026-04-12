@@ -53,7 +53,7 @@ async function clearWarns(guildId, userId) { await db.set(`warns_${guildId}_${us
 async function getMessagePoints(guildId, userId) { return (await db.get(`msgpts_${guildId}_${userId}`)) ?? 0; }
 async function addMessagePoints(guildId, userId, amount = 1) {
   const c = await getMessagePoints(guildId, userId);
-  await db.set(`msgpts_${guildId}_${userId}`, Math.max(0, c + amount));
+  await db.set(`msgpts_${guildId}_${userId}`, c + amount);
 }
 async function getInvitePoints(guildId, userId) { return (await db.get(`invpts_${guildId}_${userId}`)) ?? 0; }
 async function addInvitePoints(guildId, userId, amount = 25) { const c = await getInvitePoints(guildId, userId); await db.set(`invpts_${guildId}_${userId}`, c + amount); }
