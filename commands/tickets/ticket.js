@@ -1,24 +1,14 @@
-// ============================================================
-//  commands/tickets/ticket.js — إدارة التذاكر
-//  Handles: !ticket close · !ticket claim · !ticket add @user
-//  Button interactions (ticket_create / ticket_close / ticket_claim)
-//  are handled in index.js interactionCreate event.
-// ============================================================
-
 const {
   EmbedBuilder,
-  ActionRowBuilder,
-  ButtonBuilder,
-  ButtonStyle,
   PermissionFlagsBits,
-  ChannelType,
 } = require('discord.js');
 const config = require('../../config.js');
 const db     = require('../../utils/db.js');
 
-function isAdmin(member) {
+function isStaff(member) {
   return member.permissions.has(PermissionFlagsBits.Administrator) ||
-    member.id === config.devId;
+    member.id === config.devId ||
+    (config.supportRoleId && member.roles.cache.has(config.supportRoleId));
 }
 
 module.exports = {
@@ -32,42 +22,37 @@ module.exports = {
   async execute(message, args, client) {
     const sub = args[0]?.toLowerCase();
 
-    // ── !ticket close ─────────────────────────────────────
+    // ── !ticket close ──────────────────────────────────────
     if (!sub || sub === 'close' || sub === 'إغلاق') {
       const ticketData = await db.getTicket(message.guild.id, message.channel.id);
-      if (!ticketData) {
-        return message.reply('❌ هذه القناة ليست تذكرة.');
-      }
+      if (!ticketData) return message.reply('❌ هذه القناة ليست تذكرة.');
 
-      const canClose = isAdmin(message.member) || message.author.id === ticketData.userId;
-      if (!canClose) {
-        return message.reply('❌ فقط صاحب التذكرة أو الأدمن يمكنه إغلاقها.');
-      }
+      const canClose = isStaff(message.member) || message.author.id === ticketData.userId;
+      if (!canClose) return message.reply('❌ فقط صاحب التذكرة أو فريق الدعم يمكنه إغلاقها.');
 
       const embed = new EmbedBuilder()
         .setColor(config.colors.danger)
         .setTitle('🔒 إغلاق التذكرة')
         .setDescription(`سيتم إغلاق هذه التذكرة خلال **5 ثوانٍ**.\nبواسطة: ${message.author}`)
         .setTimestamp();
-
       await message.channel.send({ embeds: [embed] });
 
-      // Log to ticket log channel
       if (config.ticketLogChannelId) {
         const logChannel = message.guild.channels.cache.get(config.ticketLogChannelId);
         if (logChannel) {
           const opener = await client.users.fetch(ticketData.userId).catch(() => null);
-          const logEmbed = new EmbedBuilder()
-            .setColor(config.colors.danger)
-            .setTitle('🎫 تذكرة مغلقة')
-            .addFields(
-              { name: 'القناة', value: message.channel.name, inline: true },
-              { name: 'فُتحت بواسطة', value: opener ? opener.tag : ticketData.userId, inline: true },
-              { name: 'أُغلقت بواسطة', value: message.author.tag, inline: true },
-              { name: 'مدة التذكرة', value: `<t:${Math.floor(ticketData.openedAt / 1000)}:R>`, inline: true },
-            )
-            .setTimestamp();
-          logChannel.send({ embeds: [logEmbed] }).catch(() => {});
+          logChannel.send({
+            embeds: [new EmbedBuilder()
+              .setColor(config.colors.danger)
+              .setTitle('🎫 تذكرة مغلقة')
+              .addFields(
+                { name: 'القناة', value: message.channel.name, inline: true },
+                { name: 'فُتحت بواسطة', value: opener ? opener.tag : ticketData.userId, inline: true },
+                { name: 'أُغلقت بواسطة', value: message.author.tag, inline: true },
+                { name: 'مُستلمة بواسطة', value: ticketData.claimedBy ? `<@${ticketData.claimedBy}>` : 'لم تُستلم', inline: true },
+                { name: 'مدة التذكرة', value: `<t:${Math.floor(ticketData.openedAt / 1000)}:R>`, inline: true },
+              ).setTimestamp()]
+          }).catch(() => {});
         }
       }
 
@@ -76,50 +61,53 @@ module.exports = {
       return;
     }
 
-    // ── !ticket claim ─────────────────────────────────────
+    // ── !ticket claim ──────────────────────────────────────
     if (sub === 'claim' || sub === 'استلام') {
-      if (!isAdmin(message.member)) {
-        return message.reply('❌ فقط الأدمن يمكنه استلام التذاكر.');
-      }
+      if (!isStaff(message.member))
+        return message.reply('❌ فقط فريق الدعم يمكنه استلام التذاكر.');
 
       const ticketData = await db.getTicket(message.guild.id, message.channel.id);
-      if (!ticketData) {
-        return message.reply('❌ هذه القناة ليست تذكرة.');
-      }
+      if (!ticketData) return message.reply('❌ هذه القناة ليست تذكرة.');
+      if (ticketData.claimedBy) return message.reply(`❌ تم استلام هذه التذكرة بالفعل بواسطة <@${ticketData.claimedBy}>.`);
 
+      await db.claimTicket(message.guild.id, message.channel.id, message.author.id);
       await db.addTicketClaim(message.guild.id, message.author.id);
 
-      const embed = new EmbedBuilder()
-        .setColor(config.colors.success)
-        .setTitle('✅ تم استلام التذكرة')
-        .setDescription(`${message.author} استلم هذه التذكرة وسيتولى المساعدة.`)
-        .addFields({ name: '🏆 النقاط', value: `+5 نقاط لـ ${message.author.username}`, inline: true })
-        .setTimestamp();
-
-      return message.channel.send({ embeds: [embed] });
+      return message.channel.send({
+        embeds: [new EmbedBuilder()
+          .setColor(config.colors.success)
+          .setTitle('✅ تم استلام التذكرة')
+          .setDescription(`${message.author} استلم هذه التذكرة وسيتولى المساعدة.`)
+          .addFields({ name: '🏆 النقاط', value: `+5 نقاط لـ ${message.author.username}`, inline: true })
+          .setTimestamp()]
+      });
     }
 
-    // ── !ticket add @user ─────────────────────────────────
+    // ── !ticket add @user ──────────────────────────────────
     if (sub === 'add' || sub === 'إضافة') {
-      if (!isAdmin(message.member)) {
-        return message.reply('❌ فقط الأدمن يمكنه إضافة أعضاء للتذكرة.');
-      }
+      if (!isStaff(message.member))
+        return message.reply('❌ فقط فريق الدعم يمكنه إضافة أعضاء للتذكرة.');
 
       const ticketData = await db.getTicket(message.guild.id, message.channel.id);
-      if (!ticketData) {
-        return message.reply('❌ هذه القناة ليست تذكرة.');
-      }
+      if (!ticketData) return message.reply('❌ هذه القناة ليست تذكرة.');
 
       const target = message.mentions.members.first();
       if (!target) return message.reply('❌ حدد عضواً: `!ticket add @عضو`');
 
+      // Give channel permissions
       await message.channel.permissionOverwrites.edit(target, {
         ViewChannel: true,
         SendMessages: true,
         ReadMessageHistory: true,
       });
 
-      return message.reply(`✅ تم إضافة ${target} إلى التذكرة.`);
+      // ✅ Save to db so they're whitelisted from penalties
+      await db.addUserToTicket(message.guild.id, message.channel.id, target.id);
+
+      return message.reply(
+        `✅ تم إضافة ${target} إلى التذكرة.\n` +
+        `🛡️ لن يتعرض لأي عقوبة عند الكتابة في هذه التذكرة.`
+      );
     }
 
     return message.reply('❓ الاستخدام: `!ticket close` · `!ticket claim` · `!ticket add @عضو`');
