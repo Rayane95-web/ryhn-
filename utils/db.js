@@ -53,7 +53,7 @@ async function clearWarns(guildId, userId) { await db.set(`warns_${guildId}_${us
 async function getMessagePoints(guildId, userId) { return (await db.get(`msgpts_${guildId}_${userId}`)) ?? 0; }
 async function addMessagePoints(guildId, userId, amount = 1) {
   const c = await getMessagePoints(guildId, userId);
-  await db.set(`msgpts_${guildId}_${userId}`, c + amount);
+  await db.set(`msgpts_${guildId}_${userId}`, Math.max(0, c + amount));
 }
 async function getInvitePoints(guildId, userId) { return (await db.get(`invpts_${guildId}_${userId}`)) ?? 0; }
 async function addInvitePoints(guildId, userId, amount = 25) { const c = await getInvitePoints(guildId, userId); await db.set(`invpts_${guildId}_${userId}`, c + amount); }
@@ -105,7 +105,6 @@ async function resetAllPoints(guildId) {
 
 // ── Tickets ───────────────────────────────────────────────────
 async function setTicket(guildId, channelId, userId) {
-  // addedUsers: array of userIds allowed to chat (added via !ticket add)
   await db.set(`ticket_${guildId}_${channelId}`, {
     userId,
     openedAt: Date.now(),
@@ -113,18 +112,14 @@ async function setTicket(guildId, channelId, userId) {
     addedUsers: [],
   });
 }
-
 async function getTicket(guildId, channelId) {
   return (await db.get(`ticket_${guildId}_${channelId}`)) ?? null;
 }
-
 async function claimTicket(guildId, channelId, userId) {
   const data = await getTicket(guildId, channelId);
   if (!data) return;
   await db.set(`ticket_${guildId}_${channelId}`, { ...data, claimedBy: userId });
 }
-
-// ✅ Adds a user to the allowed list so they won't get penalised
 async function addUserToTicket(guildId, channelId, userId) {
   const data = await getTicket(guildId, channelId);
   if (!data) return;
@@ -132,9 +127,41 @@ async function addUserToTicket(guildId, channelId, userId) {
   if (!addedUsers.includes(userId)) addedUsers.push(userId);
   await db.set(`ticket_${guildId}_${channelId}`, { ...data, addedUsers });
 }
-
 async function deleteTicket(guildId, channelId) {
   await db.delete(`ticket_${guildId}_${channelId}`);
+}
+
+// ── Ticket Ratings ────────────────────────────────────────────
+/**
+ * Save a pending rating request so we know which DM message = which ticket/guild
+ * key: userId → { guildId, channelName, claimedBy, openedAt, dmMessageId }
+ */
+async function setPendingRating(userId, data) {
+  await db.set(`rating_pending_${userId}`, data);
+}
+async function getPendingRating(userId) {
+  return (await db.get(`rating_pending_${userId}`)) ?? null;
+}
+async function deletePendingRating(userId) {
+  await db.delete(`rating_pending_${userId}`);
+}
+
+/**
+ * Save a submitted rating
+ * Stored per guild so we can show average rating stats later
+ */
+async function saveRating(guildId, data) {
+  const key = `ratings_${guildId}`;
+  const existing = (await db.get(key)) ?? [];
+  existing.push({ ...data, submittedAt: Date.now() });
+  await db.set(key, existing);
+}
+
+/**
+ * Get all ratings for a guild
+ */
+async function getRatings(guildId) {
+  return (await db.get(`ratings_${guildId}`)) ?? [];
 }
 
 module.exports = {
@@ -150,4 +177,6 @@ module.exports = {
   getTotalPoints, getAllPoints,
   resetAllPoints,
   setTicket, getTicket, claimTicket, addUserToTicket, deleteTicket,
+  setPendingRating, getPendingRating, deletePendingRating,
+  saveRating, getRatings,
 };
