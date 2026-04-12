@@ -1,26 +1,13 @@
-// ============================================================
-//  commands/admin/leaderboard.js — لوحة المتصدرين
-//  Admin-only command showing top 10 members by total points.
-//  Points: 1 per message · 25 per invite · 5 per ticket claim
-//  Uses paginated embeds with navigation buttons.
-// ============================================================
-
 const {
   EmbedBuilder,
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
-  PermissionFlagsBits,
 } = require('discord.js');
 const config = require('../../config.js');
 const db     = require('../../utils/db.js');
 
 const PAGE_SIZE = 10;
-
-function isAdmin(message) {
-  return message.member.permissions.has(PermissionFlagsBits.Administrator) ||
-    message.author.id === config.devId;
-}
 
 function buildEmbed(entries, page, totalPages, guild) {
   const medals = ['🥇', '🥈', '🥉'];
@@ -54,23 +41,18 @@ function buildEmbed(entries, page, totalPages, guild) {
 
 module.exports = {
   name: 'leaderboard',
-  aliases: ['lb', 'المتصدرين', 'نقاط-المتصدرين'],
-  description: 'عرض أعلى الأعضاء نقاطاً (للأدمن)',
+  aliases: ['lb', 'المتصدرين', 'نقاط-المتصدرين', 'richest-points'],
+  description: 'عرض أعلى الأعضاء نقاطاً',
   usage: '!leaderboard',
-  category: '⚙️ الإدارة',
+  category: '🏆 النقاط والمتصدرين',
   cooldown: 10,
 
   async execute(message, args, client) {
-    if (!isAdmin(message)) {
-      return message.reply('❌ هذا الأمر للأدمن فقط.');
-    }
-
-    const allPoints = await db.getAllPoints(message.guild.id);
+    const allPoints  = await db.getAllPoints(message.guild.id);
     const totalPages = Math.max(Math.ceil(allPoints.length / PAGE_SIZE), 1);
     let page = 0;
 
-    const getPage = (p) => allPoints.slice(p * PAGE_SIZE, p * PAGE_SIZE + PAGE_SIZE);
-
+    const getPage  = (p) => allPoints.slice(p * PAGE_SIZE, p * PAGE_SIZE + PAGE_SIZE);
     const buildRow = (p) => new ActionRowBuilder().addComponents(
       new ButtonBuilder()
         .setCustomId('lb_prev')
@@ -102,7 +84,6 @@ module.exports = {
       if (interaction.customId === 'lb_prev' && page > 0) page--;
       else if (interaction.customId === 'lb_next' && page < totalPages - 1) page++;
       else if (interaction.customId === 'lb_refresh') {
-        // Re-fetch fresh data
         const fresh = await db.getAllPoints(message.guild.id);
         await interaction.update({
           embeds: [buildEmbed(fresh.slice(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE), page, Math.max(Math.ceil(fresh.length / PAGE_SIZE), 1), message.guild)],
@@ -110,7 +91,6 @@ module.exports = {
         });
         return;
       }
-
       await interaction.update({
         embeds: [buildEmbed(getPage(page), page, totalPages, message.guild)],
         components: [buildRow(page)],
