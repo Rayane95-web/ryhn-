@@ -51,7 +51,11 @@ async function clearWarns(guildId, userId) { await db.set(`warns_${guildId}_${us
 
 // ── Points ────────────────────────────────────────────────────
 async function getMessagePoints(guildId, userId) { return (await db.get(`msgpts_${guildId}_${userId}`)) ?? 0; }
-async function addMessagePoints(guildId, userId, amount = 1) { const c = await getMessagePoints(guildId, userId); await db.set(`msgpts_${guildId}_${userId}`, c + amount); }
+async function addMessagePoints(guildId, userId, amount = 1) {
+  const c = await getMessagePoints(guildId, userId);
+  const newVal = Math.max(0, c + amount); // prevent going below 0
+  await db.set(`msgpts_${guildId}_${userId}`, newVal);
+}
 async function getInvitePoints(guildId, userId) { return (await db.get(`invpts_${guildId}_${userId}`)) ?? 0; }
 async function addInvitePoints(guildId, userId, amount = 25) { const c = await getInvitePoints(guildId, userId); await db.set(`invpts_${guildId}_${userId}`, c + amount); }
 async function getInviteCount(guildId, userId) { return (await db.get(`invcnt_${guildId}_${userId}`)) ?? 0; }
@@ -89,6 +93,23 @@ async function getAllPoints(guildId) {
   return results.sort((a, b) => b.total - a.total);
 }
 
+// ── Weekly Points Reset ───────────────────────────────────────
+/**
+ * Resets ALL points (message, invite, ticket) for ALL users in a guild to 0.
+ * Called every Sunday at midnight automatically.
+ */
+async function resetAllPoints(guildId) {
+  const all = (await db.all()) ?? [];
+  const prefixes = [`msgpts_${guildId}_`, `invpts_${guildId}_`, `tktpts_${guildId}_`, `tktcnt_${guildId}_`, `invcnt_${guildId}_`];
+  for (const entry of all) {
+    for (const prefix of prefixes) {
+      if (entry.id.startsWith(prefix)) {
+        await db.set(entry.id, 0);
+      }
+    }
+  }
+}
+
 // ── Tickets ───────────────────────────────────────────────────
 async function setTicket(guildId, channelId, userId) {
   await db.set(`ticket_${guildId}_${channelId}`, { userId, openedAt: Date.now(), claimedBy: null });
@@ -96,7 +117,6 @@ async function setTicket(guildId, channelId, userId) {
 async function getTicket(guildId, channelId) {
   return (await db.get(`ticket_${guildId}_${channelId}`)) ?? null;
 }
-// ✅ New: saves who claimed the ticket
 async function claimTicket(guildId, channelId, userId) {
   const data = await getTicket(guildId, channelId);
   if (!data) return;
@@ -117,5 +137,6 @@ module.exports = {
   getTicketPoints, addTicketPoints,
   getTicketClaimCount, addTicketClaim,
   getTotalPoints, getAllPoints,
+  resetAllPoints,
   setTicket, getTicket, claimTicket, deleteTicket,
 };
