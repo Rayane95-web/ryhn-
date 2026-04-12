@@ -12,13 +12,14 @@ module.exports = {
   devId:    process.env.DEV_ID            || '',
 
   // Roles
-  autoRoleId:    process.env.AUTO_ROLE_ID     || '',
-  supportRoleId: process.env.SUPPORT_ROLE_ID  || '',
+  autoRoleId:    process.env.AUTO_ROLE_ID    || '',
+  supportRoleId: process.env.SUPPORT_ROLE_ID || '',
 
   // Channels
-  welcomeChannelId:   process.env.WELCOME_CHANNEL_ID    || '',
-  ticketCategoryId:   process.env.TICKET_CATEGORY_ID    || '',
-  ticketLogChannelId: process.env.TICKET_LOG_CHANNEL_ID || '',
+  welcomeChannelId:    process.env.WELCOME_CHANNEL_ID    || '',
+  ticketCategoryId:    process.env.TICKET_CATEGORY_ID    || '',
+  ticketLogChannelId:  process.env.TICKET_LOG_CHANNEL_ID || '',
+  penaltyLogChannelId: process.env.PENALTY_LOG_CHANNEL_ID || '', // ← قناة سجل العقوبات (-6 نقاط)
 
   prefix: process.env.PREFIX || '!',
 
@@ -41,5 +42,5 @@ module.exports = {
     warning: 0xFEE75C,
     info:    0x5865F2,
     gold:    0xF1C40F,
-  }
+  },
 };
