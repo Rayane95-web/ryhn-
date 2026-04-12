@@ -54,12 +54,66 @@ for (const dir of fs.readdirSync(commandsPath)) {
   }
 }
 
+// ── Weekly Points Reset Scheduler ────────────────────────────
+// Runs every Sunday at 00:00 (midnight) automatically
+function scheduleWeeklyReset() {
+  const now = new Date();
+  // Days until next Sunday (0 = Sunday)
+  const daysUntilSunday = (7 - now.getDay()) % 7 || 7;
+  const nextSunday = new Date(now);
+  nextSunday.setDate(now.getDate() + daysUntilSunday);
+  nextSunday.setHours(0, 0, 0, 0);
+
+  const msUntilReset = nextSunday - now;
+
+  console.log(`📅 Weekly points reset scheduled: ${nextSunday.toLocaleString()}`);
+
+  setTimeout(async () => {
+    await runWeeklyReset();
+    // After first run, repeat every 7 days
+    setInterval(runWeeklyReset, 7 * 24 * 60 * 60 * 1000);
+  }, msUntilReset);
+}
+
+async function runWeeklyReset() {
+  const db = require('./utils/db.js');
+  console.log('🔄 Running weekly points reset...');
+
+  for (const guild of client.guilds.cache.values()) {
+    try {
+      await db.resetAllPoints(guild.id);
+      console.log(`✅ Points reset for guild: ${guild.name}`);
+
+      // Announce reset in log channel if configured
+      if (config.ticketLogChannelId) {
+        const logChannel = guild.channels.cache.get(config.ticketLogChannelId);
+        if (logChannel) {
+          logChannel.send({
+            embeds: [new EmbedBuilder()
+              .setColor(config.colors.warning)
+              .setTitle('🔄 إعادة تعيين النقاط الأسبوعية')
+              .setDescription(
+                'تم إعادة تعيين جميع نقاط الأعضاء إلى **0** تلقائياً.\n' +
+                'ابدأ من جديد وتنافس للوصول إلى القمة! 🏆'
+              )
+              .setFooter({ text: 'تتم إعادة التعيين كل أسبوع — يوم الأحد منتصف الليل' })
+              .setTimestamp()]
+          }).catch(() => {});
+        }
+      }
+    } catch (err) {
+      console.error(`❌ Weekly reset failed for guild ${guild.name}:`, err);
+    }
+  }
+}
+
 // ── Ready ──────────────────────────────────────────────────────
 client.once('clientReady', async () => {
   console.log(`\n🤖 Bot online: ${client.user.tag}`);
   console.log(`📦 Commands loaded: ${client.commands.size}`);
   console.log(`🌐 Servers: ${client.guilds.cache.size}\n`);
   client.user.setActivity(`${config.prefix}help | مجتمع A7MED`, { type: 3 });
+
   for (const guild of client.guilds.cache.values()) {
     try {
       const invites = await guild.invites.fetch();
@@ -68,6 +122,9 @@ client.once('clientReady', async () => {
       client.inviteCache.set(guild.id, map);
     } catch {}
   }
+
+  // Start weekly reset scheduler
+  scheduleWeeklyReset();
 });
 
 // ── Member join ────────────────────────────────────────────────
@@ -117,28 +174,127 @@ client.on('guildMemberAdd', async member => {
   } catch (err) { console.error('guildMemberAdd error:', err); }
 });
 
-// ── Message points (XP removed) ───────────────────────────────
+// ── Messages ───────────────────────────────────────────────────
 const ptsCooldown = new Map();
 
 client.on('messageCreate', async message => {
   if (message.author.bot || !message.guild) return;
+
   const db  = require('./utils/db.js');
   const now = Date.now();
+
+  // ── 1. Message points (10s cooldown) ──────────────────────
   const lastPts = ptsCooldown.get(message.author.id) ?? 0;
   if (now - lastPts > 10_000) {
     ptsCooldown.set(message.author.id, now);
     db.addMessagePoints(message.guild.id, message.author.id, config.points.perMessage).catch(() => {});
   }
+
+  // ── 2. Ticket channel monitoring ──────────────────────────
+  // If the channel is a ticket and the sender shouldn't be here
+  if (message.channel.topic?.startsWith('ticket:')) {
+    const ticketData = await db.getTicket(message.guild.id, message.channel.id).catch(() => null);
+
+    if (ticketData) {
+      const isTicketOwner   = message.author.id === ticketData.userId;
+      const isAdmin         = message.member.permissions.has(PermissionFlagsBits.Administrator);
+      const hasSupportRole  = config.supportRoleId && message.member.roles.cache.has(config.supportRoleId);
+      const isDev           = message.author.id === config.devId;
+
+      // Someone who shouldn't be here is typing
+      if (!isTicketOwner && !isAdmin && !hasSupportRole && !isDev) {
+        // Delete their message
+        await message.delete().catch(() => {});
+
+        // Deduct 6 points
+        await db.addMessagePoints(message.guild.id, message.author.id, -6);
+        const newTotal = await db.getTotalPoints(message.guild.id, message.author.id);
+
+        // ✅ Send DM warning with 9ATTOS name
+        message.author.send({
+          embeds: [new EmbedBuilder()
+            .setColor(config.colors.danger)
+            .setTitle('⚠️ تحذير من إدارة مجتمع A7MED')
+            .setDescription(
+              `مرحباً ${message.author.username}،\n\n` +
+              `تم اكتشافك تكتب في قناة تذكرة **لا تخصك** في سيرفر **${message.guild.name}**.\n\n` +
+              `🚫 هذا مخالف لقواعد السيرفر.\n` +
+              `📉 تم خصم **6 نقاط** من رصيدك.\n` +
+              `🏆 نقاطك الحالية: **${newTotal}**\n\n` +
+              `⚠️ في المرة القادمة ستتلقى **تحذيراً رسمياً** في السيرفر.\n\n` +
+              `— **9ATTOS** | مطور بوت مجتمع A7MED`
+            )
+            .setFooter({ text: 'مجتمع A7MED | احترم قواعد السيرفر 💙' })
+            .setTimestamp()]
+        }).catch(() => {});
+
+        // ✅ Send log to ticket log channel
+        if (config.ticketLogChannelId) {
+          const logChannel = message.guild.channels.cache.get(config.ticketLogChannelId);
+          if (logChannel) {
+            logChannel.send({
+              embeds: [new EmbedBuilder()
+                .setColor(config.colors.danger)
+                .setTitle('🚨 محاولة كتابة في تذكرة غير مخصصة')
+                .addFields(
+                  { name: '👤 العضو', value: `${message.author} (${message.author.tag})`, inline: true },
+                  { name: '🎫 قناة التذكرة', value: `${message.channel}`, inline: true },
+                  { name: '👑 صاحب التذكرة', value: `<@${ticketData.userId}>`, inline: true },
+                  { name: '📝 الرسالة المحذوفة', value: message.content.slice(0, 200) || '(لا يوجد نص)', inline: false },
+                  { name: '📉 النقاط المخصومة', value: '6 نقاط', inline: true },
+                  { name: '🏆 نقاطه الآن', value: `${newTotal}`, inline: true },
+                  { name: '⚠️ الإجراء', value: 'تم حذف الرسالة + إرسال تحذير DM + خصم 6 نقاط', inline: false },
+                )
+                .setFooter({ text: 'التحذير الأول — المرة القادمة: تحذير رسمي' })
+                .setTimestamp()]
+            }).catch(() => {});
+          }
+        }
+
+        // ✅ Send to separate penalty log channel
+        if (config.penaltyLogChannelId) {
+          const penaltyChannel = message.guild.channels.cache.get(config.penaltyLogChannelId);
+          if (penaltyChannel) {
+            penaltyChannel.send({
+              embeds: [new EmbedBuilder()
+                .setColor(config.colors.warning)
+                .setTitle('📉 عقوبة نقاط — كتابة في تذكرة غير مخصصة')
+                .setThumbnail(message.author.displayAvatarURL({ dynamic: true }))
+                .setDescription(
+                  `تم خصم **6 نقاط** من ${message.author} بسبب الكتابة في تذكرة لا تخصه.`
+                )
+                .addFields(
+                  { name: '👤 العضو', value: `${message.author}\n${message.author.tag}`, inline: true },
+                  { name: '🎫 التذكرة', value: `${message.channel}`, inline: true },
+                  { name: '👑 صاحب التذكرة', value: `<@${ticketData.userId}>`, inline: true },
+                  { name: '📉 النقاط المخصومة', value: '**-6 نقاط**', inline: true },
+                  { name: '🏆 نقاطه الآن', value: `**${newTotal}**`, inline: true },
+                  { name: '📱 تم إرسال DM', value: '✅ نعم', inline: true },
+                )
+                .setFooter({ text: '⚠️ المرة القادمة: تحذير رسمي | مجتمع A7MED' })
+                .setTimestamp()]
+            }).catch(() => {});
+          }
+        }
+
+        return; // Stop processing this message further
+      }
+    }
+  }
+
+  // ── 3. Command handling ────────────────────────────────────
   if (!message.content.startsWith(config.prefix)) return;
   const args        = message.content.slice(config.prefix.length).trim().split(/\s+/);
   const commandName = args.shift().toLowerCase();
   const resolved    = client.aliases.get(commandName) ?? commandName;
   const command     = client.commands.get(resolved);
   if (!command) return;
+
   if (!client.cooldowns.has(command.name)) client.cooldowns.set(command.name, new Collection());
   const timestamps     = client.cooldowns.get(command.name);
   const cooldownAmount = (command.cooldown ?? 3) * 1000;
   const userId         = message.author.id;
+
   if (timestamps.has(userId)) {
     const exp = timestamps.get(userId) + cooldownAmount;
     if (now < exp) {
@@ -148,6 +304,7 @@ client.on('messageCreate', async message => {
   }
   timestamps.set(userId, now);
   setTimeout(() => timestamps.delete(userId), cooldownAmount);
+
   try {
     await command.execute(message, args, client);
   } catch (err) {
@@ -215,7 +372,7 @@ client.on('interactionCreate', async interaction => {
         new ButtonBuilder().setCustomId('ticket_close').setLabel('🔒 إغلاق التذكرة').setStyle(ButtonStyle.Danger),
       );
 
-      // ✅ Ping support role + ticket owner when ticket opens
+      // Ping support role + ticket owner
       const supportPing = config.supportRoleId ? `<@&${config.supportRoleId}>` : '';
       await ticketChannel.send({
         content: `${user} ${supportPing}`.trim(),
@@ -253,7 +410,6 @@ client.on('interactionCreate', async interaction => {
     const ticketData = await db.getTicket(guild.id, channel.id);
     if (!ticketData) return interaction.reply({ content: '❌ هذه القناة ليست تذكرة.', ephemeral: true });
 
-    // ✅ Already claimed by someone else
     if (ticketData.claimedBy) {
       if (ticketData.claimedBy === user.id)
         return interaction.reply({ content: '❌ لقد استلمت هذه التذكرة بالفعل!', ephemeral: true });
@@ -263,11 +419,9 @@ client.on('interactionCreate', async interaction => {
       });
     }
 
-    // ✅ Mark as claimed
     await db.claimTicket(guild.id, channel.id, user.id);
     await db.addTicketClaim(guild.id, user.id);
 
-    // ✅ Disable claim button after first claim
     const updatedRow = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
         .setCustomId('ticket_claim')
@@ -281,7 +435,6 @@ client.on('interactionCreate', async interaction => {
     );
 
     await interaction.update({ components: [updatedRow] });
-
     await channel.send({
       embeds: [new EmbedBuilder().setColor(config.colors.success).setTitle('✅ تم استلام التذكرة')
         .setDescription(`${user} استلم هذه التذكرة وسيتولى المساعدة.`)
