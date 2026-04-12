@@ -53,8 +53,7 @@ async function clearWarns(guildId, userId) { await db.set(`warns_${guildId}_${us
 async function getMessagePoints(guildId, userId) { return (await db.get(`msgpts_${guildId}_${userId}`)) ?? 0; }
 async function addMessagePoints(guildId, userId, amount = 1) {
   const c = await getMessagePoints(guildId, userId);
-  const newVal = Math.max(0, c + amount); // prevent going below 0
-  await db.set(`msgpts_${guildId}_${userId}`, newVal);
+  await db.set(`msgpts_${guildId}_${userId}`, Math.max(0, c + amount));
 }
 async function getInvitePoints(guildId, userId) { return (await db.get(`invpts_${guildId}_${userId}`)) ?? 0; }
 async function addInvitePoints(guildId, userId, amount = 25) { const c = await getInvitePoints(guildId, userId); await db.set(`invpts_${guildId}_${userId}`, c + amount); }
@@ -93,35 +92,47 @@ async function getAllPoints(guildId) {
   return results.sort((a, b) => b.total - a.total);
 }
 
-// ── Weekly Points Reset ───────────────────────────────────────
-/**
- * Resets ALL points (message, invite, ticket) for ALL users in a guild to 0.
- * Called every Sunday at midnight automatically.
- */
+// ── Weekly Reset ──────────────────────────────────────────────
 async function resetAllPoints(guildId) {
   const all = (await db.all()) ?? [];
   const prefixes = [`msgpts_${guildId}_`, `invpts_${guildId}_`, `tktpts_${guildId}_`, `tktcnt_${guildId}_`, `invcnt_${guildId}_`];
   for (const entry of all) {
     for (const prefix of prefixes) {
-      if (entry.id.startsWith(prefix)) {
-        await db.set(entry.id, 0);
-      }
+      if (entry.id.startsWith(prefix)) await db.set(entry.id, 0);
     }
   }
 }
 
 // ── Tickets ───────────────────────────────────────────────────
 async function setTicket(guildId, channelId, userId) {
-  await db.set(`ticket_${guildId}_${channelId}`, { userId, openedAt: Date.now(), claimedBy: null });
+  // addedUsers: array of userIds allowed to chat (added via !ticket add)
+  await db.set(`ticket_${guildId}_${channelId}`, {
+    userId,
+    openedAt: Date.now(),
+    claimedBy: null,
+    addedUsers: [],
+  });
 }
+
 async function getTicket(guildId, channelId) {
   return (await db.get(`ticket_${guildId}_${channelId}`)) ?? null;
 }
+
 async function claimTicket(guildId, channelId, userId) {
   const data = await getTicket(guildId, channelId);
   if (!data) return;
   await db.set(`ticket_${guildId}_${channelId}`, { ...data, claimedBy: userId });
 }
+
+// ✅ Adds a user to the allowed list so they won't get penalised
+async function addUserToTicket(guildId, channelId, userId) {
+  const data = await getTicket(guildId, channelId);
+  if (!data) return;
+  const addedUsers = data.addedUsers ?? [];
+  if (!addedUsers.includes(userId)) addedUsers.push(userId);
+  await db.set(`ticket_${guildId}_${channelId}`, { ...data, addedUsers });
+}
+
 async function deleteTicket(guildId, channelId) {
   await db.delete(`ticket_${guildId}_${channelId}`);
 }
@@ -138,5 +149,5 @@ module.exports = {
   getTicketClaimCount, addTicketClaim,
   getTotalPoints, getAllPoints,
   resetAllPoints,
-  setTicket, getTicket, claimTicket, deleteTicket,
+  setTicket, getTicket, claimTicket, addUserToTicket, deleteTicket,
 };
