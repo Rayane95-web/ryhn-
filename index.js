@@ -201,9 +201,11 @@ client.on('messageCreate', async message => {
       // ✅ Whitelisted via !ticket add — no penalty
       const isAddedUser    = (ticketData.addedUsers ?? []).includes(message.author.id);
       const isClaimedBy    = ticketData.claimedBy === message.author.id;
+      // ✅ Special role — full ticket access without penalty
+      const hasSpecialRole = message.member.roles.cache.has('1476947818156527901');
 
       // Someone who shouldnt be here is typing
-      if (!isTicketOwner && !isDev && !isAddedUser && !isClaimedBy) {
+      if (!isTicketOwner && !isDev && !isAddedUser && !isClaimedBy && !hasSpecialRole) {
         // Delete their message
         await message.delete().catch(() => {});
 
