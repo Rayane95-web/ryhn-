@@ -204,7 +204,7 @@ client.on('messageCreate', async message => {
       const isAddedUser    = (ticketData.addedUsers ?? []).includes(message.author.id);
 
       // Someone who shouldnt be here is typing
-      if (!isTicketOwner && !isAdmin && !hasSupportRole && !isDev && !isAddedUser) {
+      if (!isTicketOwner && !isDev && !isAddedUser) {
         // Delete their message
         await message.delete().catch(() => {});
 
