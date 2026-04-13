@@ -30,20 +30,19 @@ module.exports = {
             '`!admin dm role @رتبة [رسالة]` — رسالة لكل أعضاء رتبة',
         },
         { name: '⚠️ التحذيرات', value: '`!admin clearwarns @عضو`\n`!admin warns @عضو`' },
-        { name: '🎭 الرتب', value: '`!admin addrole @عضو @رتبة`\n`!admin removerole @عضو @رتبة`' },
         { name: '🔧 معلومات', value: '`!admin botinfo`' },
       ];
 
       if (isDev(message)) {
         adminFields.unshift({
-          name: '💰 الاقتصاد — للمطور فقط 👑',
+          name: '💰 الاقتصاد والنقاط — للمطور فقط 👑',
           value:
             '`!admin addmoney @عضو [مبلغ]`\n' +
             '`!admin removemoney @عضو [مبلغ]`\n' +
             '`!admin setmoney @عضو [مبلغ]`\n' +
             '`!admin resetmoney @عضو`\n' +
-            '`!admin addpoints @عضو [مبلغ]`\n' +
-            '`!admin removepoints @عضو [مبلغ]`\n' +
+            '`!admin addpoints @عضو [مبلغ]` — يُضاف كنقاط تذاكر\n' +
+            '`!admin removepoints @عضو [مبلغ]` — يُخصم من نقاط التذاكر\n' +
             '`!admin resetall @عضو`',
         });
       }
@@ -107,25 +106,35 @@ module.exports = {
       return message.reply(`✅ تم إعادة تعيين رصيد ${member} إلى **${config.economy.startingBalance.toLocaleString()} عملة**.`);
     }
 
-    // ── addpoints (DEV) ─────────────────────────────────────
+    // ── addpoints → ticket points (DEV) ─────────────────────
     if (sub === 'addpoints') {
       const member = message.mentions.members.first();
       const amount = parseInt(args[2]);
       if (!member || isNaN(amount) || amount <= 0) return message.reply('❌ `!admin addpoints @عضو [مبلغ]`');
-      await db.addMessagePoints(message.guild.id, member.id, amount);
-      const total = await db.getTotalPoints(message.guild.id, member.id);
-      return message.reply(`✅ تم إضافة **${amount.toLocaleString()} نقطة** لـ ${member}.\n🏆 إجمالي نقاطه: **${total.toLocaleString()}**`);
+      // ✅ Added as ticket points
+      await db.addTicketPoints(message.guild.id, member.id, amount);
+      const tktPts = await db.getTicketPoints(message.guild.id, member.id);
+      const total  = await db.getTotalPoints(message.guild.id, member.id);
+      return message.reply(
+        `✅ تم إضافة **${amount.toLocaleString()} نقطة** لـ ${member} كـ **نقاط تذاكر**.\n` +
+        `🎫 نقاط التذاكر: **${tktPts.toLocaleString()}** | 🏆 الإجمالي: **${total.toLocaleString()}**`
+      );
     }
 
-    // ── removepoints (DEV) ──────────────────────────────────
+    // ── removepoints → ticket points (DEV) ──────────────────
     if (sub === 'removepoints') {
       const member = message.mentions.members.first();
       const amount = parseInt(args[2]);
       if (!member || isNaN(amount) || amount <= 0) return message.reply('❌ `!admin removepoints @عضو [مبلغ]`');
-      const current = await db.getMessagePoints(message.guild.id, member.id);
-      await db.addMessagePoints(message.guild.id, member.id, -Math.min(amount, current));
+      // ✅ Removed from ticket points
+      const current = await db.getTicketPoints(message.guild.id, member.id);
+      const deduct  = Math.min(amount, current);
+      await db.addTicketPoints(message.guild.id, member.id, -deduct);
       const total = await db.getTotalPoints(message.guild.id, member.id);
-      return message.reply(`✅ تم خصم **${amount.toLocaleString()} نقطة** من ${member}.\n🏆 إجمالي نقاطه: **${total.toLocaleString()}**`);
+      return message.reply(
+        `✅ تم خصم **${deduct.toLocaleString()} نقطة** من نقاط التذاكر لـ ${member}.\n` +
+        `🏆 إجمالي نقاطه الآن: **${total.toLocaleString()}**`
+      );
     }
 
     // ── resetall (DEV) ──────────────────────────────────────
@@ -134,7 +143,8 @@ module.exports = {
       if (!member) return message.reply('❌ `!admin resetall @عضو`');
       await Promise.all([
         db.setBalance(message.guild.id, member.id, config.economy.startingBalance),
-        db.addMessagePoints(message.guild.id, member.id, -(await db.getMessagePoints(message.guild.id, member.id))),
+        db.addTicketPoints(message.guild.id, member.id, -(await db.getTicketPoints(message.guild.id, member.id))),
+        db.addInvitePoints(message.guild.id, member.id, -(await db.getInvitePoints(message.guild.id, member.id))),
       ]);
       return message.reply(`✅ تم إعادة تعيين رصيد ونقاط ${member} بالكامل.`);
     }
@@ -181,61 +191,39 @@ module.exports = {
     if (sub === 'dm') {
       const second = args[1]?.toLowerCase();
 
-      // !admin dm role @رتبة [رسالة] — DM all members with a role
       if (second === 'role' || second === 'رتبة') {
         const role = message.mentions.roles.first();
         const msg  = args.slice(3).join(' ');
-        if (!role || !msg)
-          return message.reply('❌ `!admin dm role @رتبة [رسالة]`');
-
-        // Fetch all members to make sure cache is full
+        if (!role || !msg) return message.reply('❌ `!admin dm role @رتبة [رسالة]`');
         await message.guild.members.fetch();
         const members = role.members.filter(m => !m.user.bot);
-
-        if (members.size === 0)
-          return message.reply(`❌ لا يوجد أعضاء يملكون رتبة ${role}.`);
-
-        const progressMsg = await message.reply(
-          `📤 جاري إرسال الرسائل لـ **${members.size}** عضو يملكون رتبة **${role.name}**...`
-        );
-
-        let sent = 0;
-        let failed = 0;
-
+        if (members.size === 0) return message.reply(`❌ لا يوجد أعضاء يملكون رتبة ${role}.`);
+        const progressMsg = await message.reply(`📤 جاري إرسال الرسائل لـ **${members.size}** عضو يملكون رتبة **${role.name}**...`);
+        let sent = 0, failed = 0;
         for (const [, m] of members) {
-          try {
-            await m.send(
-              `📩 **رسالة من إدارة مجتمع ${message.guild.name}:**\n\n${msg}`
-            );
-            sent++;
-          } catch {
-            failed++;
-          }
-          // Small delay to avoid rate limiting
+          try { await m.send(`📩 **رسالة من إدارة مجتمع ${message.guild.name}:**\n\n${msg}`); sent++; }
+          catch { failed++; }
           await new Promise(r => setTimeout(r, 500));
         }
-
-        const resultEmbed = new EmbedBuilder()
-          .setColor(sent > 0 ? config.colors.success : config.colors.danger)
-          .setTitle('📩 نتيجة الإرسال الجماعي')
-          .addFields(
-            { name: '🎭 الرتبة', value: `${role}`, inline: true },
-            { name: '✅ تم الإرسال', value: `${sent} عضو`, inline: true },
-            { name: '❌ فشل الإرسال', value: `${failed} عضو`, inline: true },
-            { name: '📝 الرسالة', value: msg.length > 200 ? msg.slice(0, 200) + '...' : msg },
-          )
-          .setFooter({ text: `بواسطة: ${message.author.tag}` })
-          .setTimestamp();
-
-        return progressMsg.edit({ content: '', embeds: [resultEmbed] });
+        return progressMsg.edit({
+          content: '',
+          embeds: [new EmbedBuilder()
+            .setColor(sent > 0 ? config.colors.success : config.colors.danger)
+            .setTitle('📩 نتيجة الإرسال الجماعي')
+            .addFields(
+              { name: '🎭 الرتبة', value: `${role}`, inline: true },
+              { name: '✅ تم الإرسال', value: `${sent} عضو`, inline: true },
+              { name: '❌ فشل الإرسال', value: `${failed} عضو`, inline: true },
+              { name: '📝 الرسالة', value: msg.length > 200 ? msg.slice(0, 200) + '...' : msg },
+            )
+            .setFooter({ text: `بواسطة: ${message.author.tag}` })
+            .setTimestamp()]
+        });
       }
 
-      // !admin dm @عضو [رسالة] — DM single member
       const member = message.mentions.members.first();
       const msg    = args.slice(2).join(' ');
-      if (!member || !msg)
-        return message.reply('❌ `!admin dm @عضو [رسالة]`\nأو لإرسال لكل أعضاء رتبة: `!admin dm role @رتبة [رسالة]`');
-
+      if (!member || !msg) return message.reply('❌ `!admin dm @عضو [رسالة]`\nأو: `!admin dm role @رتبة [رسالة]`');
       try {
         await member.send(`📩 **رسالة من إدارة مجتمع ${message.guild.name}:**\n\n${msg}`);
         return message.reply(`✅ تم إرسال رسالة خاصة لـ ${member}.`);
