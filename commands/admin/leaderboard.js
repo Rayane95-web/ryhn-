@@ -14,7 +14,7 @@ function buildEmbed(entries, page, totalPages, guild) {
   const start  = page * PAGE_SIZE;
 
   const description = entries.length === 0
-    ? '> لا توجد بيانات نقاط بعد. ابدأ بالدردشة والدعوات!'
+    ? '> لا توجد بيانات نقاط بعد. ابدأ بالدعوات والتذاكر!'
     : entries.map((e, i) => {
         const rank   = start + i + 1;
         const medal  = medals[rank - 1] ?? `**${rank}.**`;
@@ -22,7 +22,7 @@ function buildEmbed(entries, page, totalPages, guild) {
         const name   = member ? member.displayName : `<@${e.userId}>`;
         return (
           `${medal} **${name}** — 🏆 **${e.total.toLocaleString()} نقطة**\n` +
-          `　💬 ${e.messagePoints} رسالة · ✉️ ${e.invitePoints} دعوة · 🎫 ${e.ticketPoints} تذكرة`
+          `　✉️ ${e.invitePoints} دعوة · 🎫 ${e.ticketPoints} تذكرة`
         );
       }).join('\n\n');
 
@@ -31,7 +31,6 @@ function buildEmbed(entries, page, totalPages, guild) {
     .setTitle('🏆 لوحة المتصدرين — مجتمع A7MED')
     .setDescription(description)
     .addFields(
-      { name: '💬 نقاط الرسائل', value: '1 نقطة / رسالة', inline: true },
       { name: '✉️ نقاط الدعوات', value: '25 نقطة / دعوة', inline: true },
       { name: '🎫 نقاط التذاكر', value: '5 نقاط / تذكرة', inline: true },
     )
@@ -41,7 +40,7 @@ function buildEmbed(entries, page, totalPages, guild) {
 
 module.exports = {
   name: 'leaderboard',
-  aliases: ['lb', 'المتصدرين', 'نقاط-المتصدرين', 'richest-points'],
+  aliases: ['lb', 'المتصدرين', 'نقاط-المتصدرين'],
   description: 'عرض أعلى الأعضاء نقاطاً',
   usage: '!leaderboard',
   category: '🏆 النقاط والمتصدرين',
@@ -54,20 +53,9 @@ module.exports = {
 
     const getPage  = (p) => allPoints.slice(p * PAGE_SIZE, p * PAGE_SIZE + PAGE_SIZE);
     const buildRow = (p) => new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId('lb_prev')
-        .setLabel('◀ السابق')
-        .setStyle(ButtonStyle.Secondary)
-        .setDisabled(p === 0),
-      new ButtonBuilder()
-        .setCustomId('lb_refresh')
-        .setLabel('🔄 تحديث')
-        .setStyle(ButtonStyle.Primary),
-      new ButtonBuilder()
-        .setCustomId('lb_next')
-        .setLabel('التالي ▶')
-        .setStyle(ButtonStyle.Secondary)
-        .setDisabled(p >= totalPages - 1),
+      new ButtonBuilder().setCustomId('lb_prev').setLabel('◀ السابق').setStyle(ButtonStyle.Secondary).setDisabled(p === 0),
+      new ButtonBuilder().setCustomId('lb_refresh').setLabel('🔄 تحديث').setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId('lb_next').setLabel('التالي ▶').setStyle(ButtonStyle.Secondary).setDisabled(p >= totalPages - 1),
     );
 
     const msg = await message.channel.send({
