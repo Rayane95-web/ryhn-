@@ -533,12 +533,10 @@ client.on('interactionCreate', async interaction => {
     });
 
     // ✅ Send rating DM to ticket owner
-    try {
-      const ticketOwner = await client.users.fetch(ticketData.userId);
-      if (ticketOwner && ticketOwner.id !== user.id) {
-        await sendRatingDM(db, ticketOwner, ticketData, channel.name, guild.id, guild.name);
-      }
-    } catch {}
+    const ticketOwner = await client.users.fetch(ticketData.userId).catch(() => null);
+    if (ticketOwner) {
+      await sendRatingDM(db, ticketOwner, ticketData, channel.name, guild.id, guild.name);
+    }
 
     if (config.ticketLogChannelId) {
       const logChannel = guild.channels.cache.get(config.ticketLogChannelId);
