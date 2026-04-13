@@ -56,7 +56,10 @@ async function addMessagePoints(guildId, userId, amount = 1) {
   await db.set(`msgpts_${guildId}_${userId}`, Math.max(0, c + amount));
 }
 async function getInvitePoints(guildId, userId) { return (await db.get(`invpts_${guildId}_${userId}`)) ?? 0; }
-async function addInvitePoints(guildId, userId, amount = 25) { const c = await getInvitePoints(guildId, userId); await db.set(`invpts_${guildId}_${userId}`, c + amount); }
+async function addInvitePoints(guildId, userId, amount = 25) {
+  const c = await getInvitePoints(guildId, userId);
+  await db.set(`invpts_${guildId}_${userId}`, Math.max(0, c + amount));
+}
 async function getInviteCount(guildId, userId) { return (await db.get(`invcnt_${guildId}_${userId}`)) ?? 0; }
 async function addInvite(guildId, userId) {
   const count = await getInviteCount(guildId, userId);
@@ -64,21 +67,31 @@ async function addInvite(guildId, userId) {
   await addInvitePoints(guildId, userId, 25);
 }
 async function getTicketPoints(guildId, userId) { return (await db.get(`tktpts_${guildId}_${userId}`)) ?? 0; }
-async function addTicketPoints(guildId, userId, amount = 5) { const c = await getTicketPoints(guildId, userId); await db.set(`tktpts_${guildId}_${userId}`, c + amount); }
+async function addTicketPoints(guildId, userId, amount = 5) {
+  const c = await getTicketPoints(guildId, userId);
+  await db.set(`tktpts_${guildId}_${userId}`, Math.max(0, c + amount));
+}
 async function getTicketClaimCount(guildId, userId) { return (await db.get(`tktcnt_${guildId}_${userId}`)) ?? 0; }
 async function addTicketClaim(guildId, userId) {
   const count = await getTicketClaimCount(guildId, userId);
   await db.set(`tktcnt_${guildId}_${userId}`, count + 1);
   await addTicketPoints(guildId, userId, 5);
 }
+
+// ✅ Total = invite + ticket only (message points removed from leaderboard)
 async function getTotalPoints(guildId, userId) {
-  const [msg, inv, tkt] = await Promise.all([getMessagePoints(guildId, userId), getInvitePoints(guildId, userId), getTicketPoints(guildId, userId)]);
-  return msg + inv + tkt;
+  const [inv, tkt] = await Promise.all([
+    getInvitePoints(guildId, userId),
+    getTicketPoints(guildId, userId),
+  ]);
+  return inv + tkt;
 }
+
+// ✅ getAllPoints total = invite + ticket only
 async function getAllPoints(guildId) {
   const all = (await db.all()) ?? [];
   const userIds = new Set();
-  const prefixes = [`msgpts_${guildId}_`, `invpts_${guildId}_`, `tktpts_${guildId}_`];
+  const prefixes = [`invpts_${guildId}_`, `tktpts_${guildId}_`];
   for (const entry of all) {
     for (const prefix of prefixes) {
       if (entry.id.startsWith(prefix)) userIds.add(entry.id.replace(prefix, ''));
@@ -86,8 +99,18 @@ async function getAllPoints(guildId) {
   }
   const results = [];
   for (const userId of userIds) {
-    const [msg, inv, tkt] = await Promise.all([getMessagePoints(guildId, userId), getInvitePoints(guildId, userId), getTicketPoints(guildId, userId)]);
-    results.push({ userId, messagePoints: msg, invitePoints: inv, ticketPoints: tkt, total: msg + inv + tkt });
+    const [inv, tkt] = await Promise.all([
+      getInvitePoints(guildId, userId),
+      getTicketPoints(guildId, userId),
+    ]);
+    if (inv + tkt === 0) continue; // skip users with 0 points
+    results.push({
+      userId,
+      messagePoints: 0,   // kept for compatibility
+      invitePoints:  inv,
+      ticketPoints:  tkt,
+      total:         inv + tkt,
+    });
   }
   return results.sort((a, b) => b.total - a.total);
 }
@@ -95,7 +118,13 @@ async function getAllPoints(guildId) {
 // ── Weekly Reset ──────────────────────────────────────────────
 async function resetAllPoints(guildId) {
   const all = (await db.all()) ?? [];
-  const prefixes = [`msgpts_${guildId}_`, `invpts_${guildId}_`, `tktpts_${guildId}_`, `tktcnt_${guildId}_`, `invcnt_${guildId}_`];
+  const prefixes = [
+    `msgpts_${guildId}_`,
+    `invpts_${guildId}_`,
+    `tktpts_${guildId}_`,
+    `tktcnt_${guildId}_`,
+    `invcnt_${guildId}_`,
+  ];
   for (const entry of all) {
     for (const prefix of prefixes) {
       if (entry.id.startsWith(prefix)) await db.set(entry.id, 0);
@@ -132,37 +161,16 @@ async function deleteTicket(guildId, channelId) {
 }
 
 // ── Ticket Ratings ────────────────────────────────────────────
-/**
- * Save a pending rating request so we know which DM message = which ticket/guild
- * key: userId → { guildId, channelName, claimedBy, openedAt, dmMessageId }
- */
-async function setPendingRating(userId, data) {
-  await db.set(`rating_pending_${userId}`, data);
-}
-async function getPendingRating(userId) {
-  return (await db.get(`rating_pending_${userId}`)) ?? null;
-}
-async function deletePendingRating(userId) {
-  await db.delete(`rating_pending_${userId}`);
-}
-
-/**
- * Save a submitted rating
- * Stored per guild so we can show average rating stats later
- */
+async function setPendingRating(userId, data) { await db.set(`rating_pending_${userId}`, data); }
+async function getPendingRating(userId) { return (await db.get(`rating_pending_${userId}`)) ?? null; }
+async function deletePendingRating(userId) { await db.delete(`rating_pending_${userId}`); }
 async function saveRating(guildId, data) {
   const key = `ratings_${guildId}`;
   const existing = (await db.get(key)) ?? [];
   existing.push({ ...data, submittedAt: Date.now() });
   await db.set(key, existing);
 }
-
-/**
- * Get all ratings for a guild
- */
-async function getRatings(guildId) {
-  return (await db.get(`ratings_${guildId}`)) ?? [];
-}
+async function getRatings(guildId) { return (await db.get(`ratings_${guildId}`)) ?? []; }
 
 module.exports = {
   getBalance, setBalance, addBalance, removeBalance, getAllBalances,
